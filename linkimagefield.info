@@ -1,4 +1,4 @@
-; $Id: linkimagefield.info,v 1.4.2.1 2007/06/18 23:06:46
+; $Id$
 name = LinkImage
 description = Defines an link image field type.
 dependencies = content
