@@ -1,0 +1,13 @@
+// $Id$
+
+5--1.4
+========
+
+This release stablizes the versioning for this module, fixes some bugs and adds
+this CHANGELOG.txt 
+
+Bugfix
+------
+- #333030 by challa.kamal: Fixed "Multiple values" for a link image field results in only 1 URL
+- #371122 by challa.kamal: fixed assigned link not working bug
+- #353094 and 340943 by johnfyoung: Get the latest stable release settled 

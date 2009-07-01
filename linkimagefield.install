@@ -1,5 +1,9 @@
 <?php
 // $Id$
+/**
+ * @file
+ * linkimagefield install file 
+ */
 
 /**
  * Implementation of hook_install().
@@ -35,10 +39,6 @@ function linkimagefield_update_1() {
   return $ret;
 }
 
-
-
-
-
 /**
  * Schema change to enable alt and title tags.
  */
@@ -61,19 +61,15 @@ function linkimagefield_update_2() {
           'fid' => array('type' => 'int', 'not null' => TRUE, 'default' => '0'),
           'title' => array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => "''", 'sortable' => TRUE),
           'alt' => array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => "''", 'sortable' => TRUE),
-	  'url' => array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => "''", 'sortable' => TRUE),
+          'url' => array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => "''", 'sortable' => TRUE),
         );
         content_alter_db_field($field, $oldcolumns, $field, $newcolumns);
         break;
     }
-    drupal_set_message('altered: <br /><pre>'. print_r($field, true) .'</pre>');
+    drupal_set_message('altered: <br /><pre>'. print_r($field, TRUE) .'</pre>');
   }
 
 
   db_query('DELETE FROM {cache}');
   return $ret;
 }
-
-
-
-
