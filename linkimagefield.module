@@ -3,706 +3,328 @@
 
 /**
  * @file
- * Defines an link image field type.
- * linkimagefield uses content.module to store the fid, and the drupal files 
- * table to store the actual file data.
+ * Defines a link image field type.
  *
+ * 6.x Port - Mainly wraps the ImageField CCK Type, adding a URL field 
+ * The URL is stored (like the image alt and title tags) in the filefield's data element
+ * 
+ * TODO:
+ * - for some reason the display formatter is not being set as the default
+ * - 
  */
 
-function linkimagefield_default_item() {  
-  return array(
-    'fid' => 0,
-    'title' => '',
-    'alt' => '',
-    'url' => '',
+/**
+ * Implementation of hook_init().
+ *
+ * Load required includes.
+ */
+function linkimagefield_init() {
+  // If Content, FileField, or ImageField is not available, immediately disable Link Image Field.
+  $disable = FALSE;
+  $message = '';  
+
+  if (!module_exists('content')) {
+    $disable = TRUE;
+    $message = t('The <a href="http://drupal.org/project/cck">Content Creation Kit</a> needs to be installed for it to work properly.');
+  }
+  
+  if (!module_exists('filefield')) {
+    $disable = TRUE;
+    $message = (!empty($message) ? '<br />' : '') . t('The <a href="http://drupal.org/project/filefield">FileField module</a> needs to be installed for it to work properly.');
+  }
+  
+  if (!module_exists('imagefield')) {
+    $disable = TRUE;
+    $message = (!empty($message) ? '<br />' : '') . t('The <a href="http://drupal.org/project/imagefield">ImageField module</a> needs to be installed for it to work properly.');
+  }
+
+  if ($disable) {
+    module_disable(array('linkimagefield'));
+    drupal_set_message(t('The Link Image Field module has been disabled.<br />') . $message);
+    return;
+  }
+  
+  // Load include code
+  module_load_include('inc', 'linkimagefield', 'linkimagefield_widget');
+}
+
+
+/**
+ * Implementation of hook_elements().
+ */
+function linkimagefield_elements() {
+  $elements = array();
+
+  // An LinkImageField is really just a ImageField with a URL.
+  $imagefield_elements = imagefield_elements();
+  $elements['linkimagefield_widget'] = $imagefield_elements['imagefield_widget'];
+  $elements['linkimagefield_widget']['#process'][] = 'linkimagefield_widget_process';
+  //$elements['linkimagefield_widget']['#element_validate'][] = 'linkimagefield_widget_validate';
+
+  // ImageField needs a separate value callback to save its alt, title and URL texts.
+  $elements['linkimagefield_widget']['#value_callback'] = 'linkimagefield_widget_value';
+
+  return $elements;
+}
+
+function linkimagefield_theme() {
+  $theme =  array(
+    'linkimagefield_image' => array(
+      'arguments' => array('file' => NULL, 'alt' => '', 'title' => '', 'attributes' => NULL, 'getsize' => TRUE, 'url' => ''),
+    ),
+    // Theme a Link Image Field field item. It calls linkimagefied_image with the proper
+    // item properties as arguments.
+    'linkimagefield_item' => array(
+      'arguments' => array('item' => NULL),
+    ),
+    // linkimagefield_widget form element type theme function.
+    'linkimagefield_widget' => array(
+      'arguments' => array('element' => NULL),
+      'file' => 'linkimagefield_widget.inc',
+    ),
+    // Use to generate a preview (admin view) of an linkimagefield item for use in
+    // field item forms and filefield widgets. Invoked by filefield_widget_process.
+    'linkimagefield_widget_preview' => array(
+      'arguments' => array('item' => NULL),
+    ),
+    // Theme function for the field item elements. allows you to place children
+    // within the context of the parent.
+    'linkimagefield_widget_item' => array(
+      'arguments' => array('element' => NULL),
+    ),
+    // Generates and img tag to the admin thumbnail of an LinkImageField upload.
+    'linkimagefield_admin_thumbnail' => array(
+      'arguments' => array('item' => NULL),
+    ),
+    'linkimagefield_formatter_linkimage' => array(
+      'arguments' => array('element' => NULL),
+      'file' => 'linkimagefield_formatter.inc',
+    ),
   );
-}
-
-
-function linkimagefield_menu($maycache) {
-  $items = array();
-  if (!$maycache && $_SESSION['linkimagefield']) {
-    // Add handlers for previewing new uploads.
-    foreach ($_SESSION['linkimagefield'] as $fieldname => $files) {
-      if (is_array($files)) {
-        foreach($files as $delta => $file) {
-          if ($file['preview']) {
-            $items[] = array(
-              'path' => $file['preview'],
-              'callback' => '_linkimagefield_preview',
-              'access' => TRUE,
-              'type' => MENU_CALLBACK,
-            );
-          }
-        }
-      }
-    }
+  
+  $imagecache_presets = module_invoke('imagecache', 'presets');
+  foreach ($imagecache_presets as $preset) {
+    $theme['linkimagefield_formatter_'. $preset['presetname'] .'_linkimage'] = array(
+      'arguments' => array('element' => NULL),
+      'function' => 'theme_linkimagefield_imagecache',
+    );
   }
-  return $items;
+  
+  return $theme;
 }
 
 /**
- *  transfer a file that is in a 'preview' state.
- *  @todo  multiple support
+ * Implementation of hook_file_download.
+ *
+ * @param string $filepath
  */
-function _linkimagefield_preview() {
-  foreach ($_SESSION['linkimagefield'] as $fieldname => $files) {
-    foreach ($files as $delta => $file) {
-      if ($file['preview'] == $_GET['q']) {
-        file_transfer($file['filepath'], array('Content-Type: '. mime_header_encode($file['filemime']),
-                                           'Content-Length: '. $file['filesize']));
-        exit();
-      }
-    }
-  }
+function linkimagefield_file_download($filepath) {
+  // Delegate to ImageField
+  imagefield_file_download($filepath);
 }
 
 /**
- * Implementation of hook_field_info().
- */
-function linkimagefield_field_info() {
-  return array(
-    'linkimage' => array('label' => 'Link Image'),
-  );
-}
-
-/**
- * Implementation of hook_field_settings().
- */
-function linkimagefield_field_settings($op, $field) {
-  switch ($op) {
-    case 'form':
-      $form = array();
-      return $form;
-    case 'validate':
-
-      break;
-    case 'save':
-      return array();
-    case 'database columns':
-      $columns = array(
-        'fid' => array('type' => 'int', 'not null' => TRUE, 'default' => '0'),
-        'title' => array('type' => 'varchar', length => 255, 'not null' => TRUE, 'default' => "''", 'sortable' => TRUE),
-        'alt' => array('type' => 'varchar', length => 255, 'not null' => TRUE, 'default' => "''", 'sortable' => TRUE),
-	'url' => array('type' => 'varchar', length => 255, 'not null' => TRUE, 'default' => "''", 'sortable' => TRUE),
-      );
-      return $columns;
-  }
-}
-
-/**
- * insert a file into the database.
- * @param $node
- *    node object file will be associated with.
- * @param $file
- *    file to be inserted, passed by reference since fid should be attached.
- *    
- */
-function linkimagefield_file_insert($node, &$file, $field) {
-  $fieldname = $field['field_name'];
-  $filepath = file_create_path($field['widget']['image_path']) . '/' . $file['filename'];
-  if (linkimagefield_check_directory($field['widget']['image_path']) && $file = file_save_upload((object)$file, $filepath)) {
-    $file = (array)$file;
-    $file['fid'] = db_next_id('{files}_fid');
-    db_query("INSERT into {files} (fid, nid, filename, filepath, filemime, filesize)
-             VALUES (%d, %d, '%s','%s','%s',%d)",
-            $file['fid'], $node->nid, $file['filename'], $file['filepath'], $file['filemime'], $file['filesize']);
-    return (array)$file;
-  }
-  else {
-    // Include file name in upload error.
-    form_set_error(NULL, t('Image upload was unsuccessful.'));
-    return FALSE;
-  }
-}
-
-
-/**
- * update the file record if necessary
- * @param $node
- * @param $file
- * @param $field
- */
-function linkimagefield_file_update($node, &$file, $field) {
-  $file = (array)$file; 
-  if ($file['flags']['delete'] == TRUE) {
-    if(_linkimagefield_file_delete($file, $field['field_name'])) {
-      return array();
-    }
-  }
-  if ($file['fid'] == 'upload') {  
-    return linkimagefield_file_insert($node, $file, $field);
-  }
-  else {
-    // if fid is not numeric here we should complain.
-    // else we update the file table.  
-  }
-  return $file;
-}
-
-/**
- * Implementation of hook_field().
- */
-function linkimagefield_field($op, $node, $field, &$node_field, $teaser, $page) {
-  $fieldname = $field['field_name'];
-  switch ($op) {
-    // called after content.module loads default data.
-    case 'load':
-       if (count($node_field)) {
-        $values = array();
-        foreach ($node_field as $delta => $file) {
-	  	  if (!empty($file)) {
-            $file = _linkimagefield_file_load($file['fid']);
-
-            // In certain cases, content.module calls this function with
-            // $items[$delta] set, even if the field has not yet been stored at
-            // all or has already been deleted. In that case, $file['fid'] == 0
-            // and file_load() returns an empty array. When that happens,
-            // unset() the delta so that subsequent hooks are not bothered.
-            if (empty($file)) {
-              unset($node_field[$delta]);
-            }
-            else { // otherwise, merge our info with CCK's, and all is fine.
-          	  $node_field[$delta]  = array_merge((array)$node_field[$delta], $file); 
-			}
-          }
-		}
-        return array($fieldname => $node_field);
-      }
-	  return array();
-	  
-    // called before content.module defaults.
-    case 'insert':     
-    print_r($field);
-      foreach ($node_field as  $delta => $item) {
-	if($item[url]=="") $item[url]="node/".$node->nid;
-        $node_field[$delta] = linkimagefield_file_insert($node, $item, $field); 
-		// Remove non-existant images from items
-        if (empty($node_field[$delta])) {
-          unset($node_field[$delta]);
-		}
-      }
-      linkimagefield_clear_field_session($fieldname);
-      break;
-
-    // called before content.module defaults.
-    case 'update':     
-      foreach ($node_field as $delta => $item) {
-	if($item[url]=="") $item[url]="node/".$node->nid;
-       // If we're dealing with a single value field, and we just received
-        // a new file item, we need to mark the existing (old) one for
-        // deletion.  Otherwise, it will become orphaned.
-	/*if (!$field['multiple'] && (count($node_field) > 1) && ($delta === 0)) {
-	 $item['flags']['delete'] = TRUE;
-        }*/
-	// Update each file item.
-        $node_field[$delta] = linkimagefield_file_update($node, $item, $field); 
-
-        // If the file has been deleted, unset the file entry so that it's
-        // actually deleted from the database, or at least set it to a
-        // default item if CCK won't delete it.
-        if (empty($node_field[$delta])) {
-         if ($field['multiple']) {
-            unset($node_field[$delta]);
-          }
-          else {
-            $node_field[$delta] = linkimagefield_default_item();
-          }
-        }
-      }
-      // Compact deltas.
-      $node_field = array_values($node_field);
-      linkimagefield_clear_field_session($fieldname);
-      break;
-
-    case 'delete':
-      foreach ($node_field as $delta => $item) {
-        _linkimagefield_file_delete($item, $field['field_name']); 
-      }
-      break;
-  }
-}
-
-/**
- * Implementation of hook_widget_info().
+ * Implementation of CCK's hook_widget_info().
+ *
+ * @return array
  */
 function linkimagefield_widget_info() {
+  $module_path = drupal_get_path('module', 'linkimagefield');
   return array(
-    'linkimage' => array(
-      'label' => 'Link Image',
-      'field types' => array('linkimage'),
+    'linkimagefield_widget' => array(
+      'label' => t('Link Image'),
+      'field types' => array('filefield'),
+      'multiple values' => CONTENT_HANDLE_CORE,
+      'callbacks' => array('default value' => CONTENT_CALLBACK_CUSTOM),
+      'description' => t('An edit widget for image files that display as a link, including a preview of the image.'),
     ),
   );
 }
 
 /**
- * Implementation of hook_widget_settings().
+ * Implementation of CCK's hook_widget_settings().
+ *
+ * @param string $op
+ * @param array $widget
+ * @return array
  */
 function linkimagefield_widget_settings($op, $widget) {
   switch ($op) {
-    case 'callbacks':
-      return array('default value' => CONTENT_CALLBACK_CUSTOM);
-
     case 'form':
-      $form = array();
-      $form['max_resolution'] = array (
-        '#type' => 'textfield', 
-        '#title' => t('Maximum resolution for Images'), 
-        '#default_value' => $widget['max_resolution'] ? $widget['max_resolution'] : 0,
-        '#size' => 15, 
-        '#maxlength' => 10, 
-        '#description' => 
-        t('The maximum allowed image size expressed as WIDTHxHEIGHT (e.g. 640x480). Set to 0 for no restriction.')
-      );
-      $form['image_path'] = array(
-        '#type' => 'textfield', 
-        '#title' => t('Image path'), 
-        '#default_value' => $widget['image_path'] ? $widget['image_path'] : '', 
-        '#description' => t('Optional subdirectory within the "%dir" directory where images will be stored. Do not include trailing slash.', array('%dir' => variable_get('file_directory_path', 'files'))), 
-        '#after_build' => array('linkimagefield_form_check_directory'),
-      );
-     
-      $form['custom_alt'] = array(
-        '#type' => 'checkbox',
-        '#title' => t('Enable custom alternate text'),
-        '#default_value' =>  $widget['custom_alt'] ? $widget['custom_alt'] : 0,
-        '#description' => t('Enable custom alternate text for images. Filename will be used if not checked.'),
-      );
-      $form['custom_title'] = array(
-        '#type' => 'checkbox',
-        '#title' => t('Enable custom title text'),
-        '#default_value' =>  $widget['custom_title'] ? $widget['custom_title'] : 0,
-        '#description' => t('Enable custom title text for images. Filename will be used if not checked.'),
-      );
-      return $form;
-
+      return linkimagefield_widget_settings_form($widget);
     case 'validate':
-      break;
-
+      return linkimagefield_widget_settings_validate($widget);
     case 'save':
-      return array('max_resolution', 'image_path', 'custom_url','custom_alt', 'custom_title', 'teaser_preset', 'body_preset');
+      return linkimagefield_widget_settings_save($widget);
   }
 }
 
 /**
- * Wrapper function for linkimagefield_check_directory that accepts a form element
- * to validate - if user specified one. Won't allow form submit unless the
- * directory exists & is writable
- * 
- * @param $form_element
- *   The form element containing the name of the directory to check.
+ * Implementation of CCK's hook_widget
+ *
+ * @param array $form
+ * @param array $form_state
+ * @param array $field
+ * @param array $items
+ * @param integer $delta
+ * @return array
  */
-function linkimagefield_form_check_directory($form_element) {
-  if(!empty($form_element['#value'])) {
-    linkimagefield_check_directory($form_element['#value'], $form_element);
-  }
-  return $form_element;
-}
-
-/**
- * Create the image directory relative to the 'files' dir recursively for every
- * directory in the path.
- * 
- * @param $directory
- *   The directory path under files to check, such as 'photo/path/here'
- * @param $form_element
- *   A form element to throw an error on if the directory is not writable
- */ 
-function linkimagefield_check_directory($directory, $form_element = array()) {
-  foreach(explode('/', $directory) as $dir) {
-    $dirs[] = $dir;
-    $path = file_create_path(implode($dirs,'/'));
-    file_check_directory($path, FILE_CREATE_DIRECTORY, $form_element['#parents'][0]);
-  }
-  return true;
-}
-
-function _linkimagefield_scale_image($file, $resolution = 0) {
-  $info = image_get_info($file['filepath']);
-  if ($info) {
-    list($width, $height) = explode('x', $resolution);
-    if ($width && $height) {
-      $result = image_scale($file['filepath'], $file['filepath'], $width, $height);
-      if ($result) {
-        $file['filesize'] = filesize($file['filepath']);
-        drupal_set_message(t('The image was resized to fit within the maximum allowed resolution of %resolution pixels', array('%resolution' => $resolution)));      
-      }
-    }
-  }
-  return $file;
-}
-
-
-function linkimagefield_clear_session() {
-  if (is_array($_SESSION['linkimagefield']) && count($_SESSION['linkimagefield'])) {
-    foreach (array_keys($_SESSION['linkimagefield']) as $fieldname) {
-      linkimagefield_clear_field_session($fieldname);
-    }
-    unset($_SESSION['linkimagefield']);
-  }
-}
-
-function linkimagefield_clear_field_session($fieldname) {
-  if (is_array($_SESSION['linkimagefield'][$fieldname]) && count($_SESSION['linkimagefield'][$fieldname])) {
-    foreach ($_SESSION['linkimagefield'][$fieldname] as $delta => $file) {
-      if (is_file($file['filepath'])) {
-        file_delete($file['filepath']);
-      }
-    }
-    unset($_SESSION['linkimagefield'][$fieldname]);
-  }
-}
-
-function _linkimagefield_file_delete($file, $fieldname) {
-  if (is_numeric($file['fid'])) {
-    db_query('DELETE FROM {files} WHERE fid = %d', $file['fid']);
-  }
-  else {
-    unset($_SESSION['linkimagefield'][$fieldname][$file['sessionid']]);
-  }
-  return file_delete($file['filepath']);
-}
-
-/**
- * Implementation of hook_widget().
- */
-function linkimagefield_widget($op, &$node, $field, &$node_field) {
-  $fieldname = $field['field_name'];
-  $content_type = $field['type_name'];
-  switch ($op) {
-    case 'default value':
-      return array();
-
-    case 'prepare form values':
-      _linkimagefield_widget_prepare_form_values($node, $field, $node_field);
-      return;
-
-    case 'form':
-      $form = _linkimagefield_widget_form($node, $field, $node_field);
-      return $form;
-
-    case 'validate':
-      _linkimagefield_widget_form_validate($node, $field, $node_field);
-      return;
-  }
-}
-
-function _linkimagefield_widget_prepare_form_values($node, $field, &$node_field) {
-  $fieldname = $field['field_name'];
-  // clean up the session if we weren't posted.
-  if (!count($_POST)) {
-    linkimagefield_clear_session();
-  }
-
-  // Attach new files 
-  if ($file = file_check_upload($fieldname . '_upload')) {
-    $file = (array)$file;
-    if (strpos($file['filemime'],'image') !== FALSE) { 
-      $file = _linkimagefield_scale_image($file, $field['widget']['max_resolution']);
-      
-      // Create the filepath for the image preview
-      $filepath = file_create_filename($file['filename'], file_create_path($field['widget']['image_path']));
-      if (variable_get('file_downloads', FILE_DOWNLOADS_PUBLIC) ==  FILE_DOWNLOADS_PRIVATE) {
-        if (strpos($filepath, file_directory_path()) !== FALSE) {
-          $filepath = trim(substr($filepath, strlen(file_directory_path())), '\\/');
-        }
-        $filepath = 'system/files/' . $filepath;
-      }
-      
-      $file['fid'] = 'upload';
-      $file['preview'] = $filepath;
-      
-      // If a single field, mark any other images for deletion and delete files in session
-      if (!$field['multiple']) {
-        if (is_array($node_field)) {
-          foreach ($node_field as $delta => $session_file) {
-            $node_field[$delta]['flags']['delete'] = TRUE;
-          }
-        }
-        linkimagefield_clear_field_session($fieldname);
-      }
-      // Add the file to the session
-      $file_id = count($node_field) + count($_SESSION['linkimagefield'][$fieldname]);
-      $_SESSION['linkimagefield'][$fieldname][$file_id] = $file;
-    }
+function linkimagefield_widget(&$form, &$form_state, $field, $items, $delta = 0) {
+  if (empty($items[$delta])) {
+    $items[$delta] = array('url' => '');
   }
   
-  // Load files from preview state. before committing actions.
-  if (is_array($_SESSION['linkimagefield'][$fieldname]) && count($_SESSION['linkimagefield'][$fieldname])) {
-    foreach($_SESSION['linkimagefield'][$fieldname] as $delta => $file) {
-      $node_field[] = $file;
-    }
-  }
-}
+  // Delegate to ImageField
+  $element = imagefield_widget($form, $form_state, $field, $items, $delta);
 
-function _linkimagefield_widget_form($node, $field, &$node_field) {
-
-  $fieldname = $field['field_name'];
-  drupal_add_css(drupal_get_path('module', 'linkimagefield') .'/linkimagefield.css');
- 
-  $form = array(); 
-  $form[$fieldname] = array(
-    '#type' => 'fieldset',
-    '#title' => t($field['widget']['label']),
-    '#weight' => $field['widget']['weight'],
-    '#collapsible' => TRUE,
-    '#collapsed' => FALSE,
-    '#tree' => TRUE,
-  );
-      
-  // Seperate from tree becase of that silly things won't be 
-  // displayed if they are a child of '#type' = form issue
-  $form[$fieldname][$fieldname .'_upload'] = array(
-    '#type'  => 'file',
-    '#title' => $delta == 0 ? t('Image') : NULL,
-    '#description' => $field['widget']['description'],
-    '#tree' => FALSE,
-    '#weight' => 1,
-  );
-
-  $form[$fieldname]['upload'] = array(
-    '#type' => 'button',
-    '#value' => t('Upload'),
-    '#name' => 'cck_linkimagefield_'.$fieldname.'_op',
-    '#attributes' => array('id' => $fieldname.'-attach-button'),
-    '#tree' => FALSE,
-    '#weight' => 2,
-  );
- 
-  // Store the file data object to be carried on.
-  if (is_array($node_field) && count($node_field)) {
-    foreach($node_field as $delta => $file) {    
-      if ($file['filepath'] && !$file['flags']['delete']) {
-        $form[$fieldname][$delta] = array (
-          '#theme' => 'linkimagefield_edit_image_row',
-        );
-
-        $form[$fieldname][$delta]['flags']['delete'] = array(
-          '#type' => 'checkbox',
-          '#title' => t('Delete'),
-          '#default_value' => 0,
-        );
-        
-        $filename = $file['fid'] == 'upload' ? file_create_filename($file['filename'], file_create_path($field['widget']['image_path'])) : $file['filepath'];
-        
-        $form[$fieldname][$delta]['preview'] = array(
-          '#type' => 'markup',
-          '#value' => theme('linkimagefield_image', $file, $file['alt'],$file['url'], $file['title'], array('width' => '150'), FALSE),
-        );
-        
-      //drupal_set_message('linkimagefield['. $fieldname .'] '. $op .' node field: <pre>'. print_r($node_field, true) .'</pre>');
-        $form[$fieldname][$delta]['description'] = array(
-          '#type' => 'markup',
-          '#value' => '<strong>' . t('Filename: ') . '</strong>' . $file['filename'],
-        );
-
-        $form[$fieldname][$delta]['alt'] = array(
-          '#type' => 'hidden',
-          '#value' => $file['filename'],
-        );
-	
-        // overwrite with an input field if custom_alt is flagged;
-        if ($field['widget']['custom_alt']) {
-          $form[$fieldname][$delta]['alt'] = array(
-            '#type' => 'textfield',
-            '#title' =>  t('Alternate text'),
-            '#default_value' => $file['alt'],
-            '#description' => t('Alternate text to be displayed if the image cannot be displayed.'),
-            '#maxlength' => 255,
-            '#size' => 10,
-          );
-        }
-        
-        $form[$fieldname][$delta]['title'] = array(
-          '#type' => 'hidden',
-          '#value' => $file['filename'],
-        );
-	
-        // overwrite with an input field if custom_title is flagged;
-        if ($field['widget']['custom_title']) {
-          $form[$fieldname][$delta]['title'] = array(
-            '#type' => 'textfield',
-            '#title' =>  t('Title'),
-            '#default_value' =>  $file['title'],
-            '#description' => t('Text to be displayed on mouse overs.'),
-            '#maxlength' => 255,
-            '#size' => 10,
-          );
-        }
-
-	
-          $form[$fieldname][$delta]['url'] = array(
-            '#type' => 'textfield',
-            '#title' =>  t('URL'),
-            '#default_value' =>  $file['url'],
-            '#description' => t('URL. Leave blank to point to the respective node.'),
-            '#maxlength' => 255,
-            '#size' => 10,
-          );
-        
-
-        
-        // Special handling for single value fields
-        if (!$field['multiple']) {
-          $form[$fieldname][$delta]['replace'] = array(
-            '#type' => 'markup',
-            '#value' => t('If a new image is chosen, the current image will be replaced upon submitting the form.'),
-          );
-        }
-      }
-      elseif ($file['filepath'] && $file['flags']['delete']) {
-        // Hide all the form values if this item is marked for deletion
-        $form[$fieldname][$delta]['flags']['delete'] = array('#type' => 'value', '#value' => $file['flags']['delete']);
-        $form[$fieldname][$delta]['title'] = array('#type' => 'value', '#value' => $file['title']);
-        $form[$fieldname][$delta]['alt'] = array('#type' => 'value', '#value' => $file['alt']);
-	$form[$fieldname][$delta]['url'] = array('#type' => 'value', '#value' => $file['url']);
-      }
-
-      $form[$fieldname][$delta]['filename'] = array('#type' => 'value',  '#value' => $file['filename']);
-      $form[$fieldname][$delta]['filepath'] = array('#type' => 'value',  '#value' => $file['filepath']);
-      $form[$fieldname][$delta]['filemime'] = array('#type' => 'value',  '#value' => $file['filemime']);
-      $form[$fieldname][$delta]['filesize'] = array('#type' => 'value',  '#value' => $file['filesize']);
-      $form[$fieldname][$delta]['fid'] = array('#type' => 'value',  '#value' => $file['fid']);
-
-    }
-  }
-  return $form;
-}
-
-function _linkimagefield_widget_form_validate($node, $field, $node_field) {
-  $fieldname = $field['field_name'];
-  if ($field['required']) {
-    if (!count($node_field)) {
-      form_set_error($fieldname, $field['widget']['label'] .' is required.');
-    }
-  }
+  return $element;
 }
 
 /**
- * Implementation of hook_field_formatter_info().
+ * Implementation of hook_field_formatter_info
+ *
+ * @return array
  */
 function linkimagefield_field_formatter_info() {
-  $formatters = array(
-    'default' => array(
-      'label' => 'Default',
-      'field types' => array('linkimage'),
-    ),
+  $imagecache_presets = module_invoke('imagecache', 'presets');
+  
+  $formatters['linkimage'] = array(
+      'label' => t('Link Image'),
+      'field types' => array('image','filefield'),
+      'description' => t('Displays image files as link to provided URL.'),
   );
+  
+  foreach ($imagecache_presets as $preset) {
+    $formatters[$preset['presetname'] .'_linkimage'] = array(
+      'label' => t('@preset Link Image', array('@preset' => $preset['presetname'])),
+      'field types' => array('image', 'filefield'),
+    );
+  }
   return $formatters;
 }
 
+/*
+function linkimagefield_field_formatter($field, $item, $formatter, $node) {
+  if (empty($item['fid']) && $field['use_default_image']) {
+    $item = $field['default_image'];
+  }
+  // Views does not load the file for us, while CCK display fields does.
+  if (empty($item['filepath'])) {
+    $item = array_merge($item, field_file_load($item['fid']));
+  }
+  if (is_string($item['data'])) {
+    $item['data'] = unserialize($item['data']);
+  }
+  $alt = empty($item['data']['alt']) ? '' : $item['data']['alt'];
+  $title = empty($item['data']['title']) ? '' : $item['data']['title'];
+  $url = empty($item['data']['url']) ? '' : $item['data']['url'];
+  $parts =  explode('_', $formatter);
+  $style = array_pop($parts);
+  $presetname = implode('_', $parts);
+
+  $class = "linkimagefield imagecache imagecache-$presetname imagecache-$style imagecache-$formatter";
+  if ($preset = imagecache_preset_by_name($presetname)) {
+    $item['filepath'] = $item['fid'] == 'upload' ? $item['preview'] : $item['filepath'];
+    $imagetag = theme('imagecache', $presetname, $item['filepath'], $alt, $title);
+    return l($imagetag, $url, array('attributes' => array('class' => $class), 'html' => TRUE));
+  }
+  return '<!-- linkimagefield formatter imagecache preset('. $presetname .') not found! -->';
+}*/
+
 /**
- * Implementation of hook_field_formatter().
+ * Implementation of hook_form_[form_id]_alter().
  *
+ * Modify the add new field form to make "LinkImage" the default formatter.
  */
-function linkimagefield_field_formatter($field, $item, $formatter) {
-  if (empty($item['fid'])) {
-    return '';
-  } 
-  $file = _linkimagefield_file_load($item['fid']);
-  return theme('linkimagefield_image', $file, $item['alt'],$item['url'], $item['title']);
+function linkimagefield_form_content_field_overview_form_alter(&$form, &$form_state) {
+  $form['#submit'][] = 'linkimagefield_form_content_field_overview_submit';
 }
 
-
-function _linkimagefield_file_load($fid = NULL) {
-  // Don't bother if we weren't passed and fid.
-  if (!empty($fid) && is_numeric($fid)) { 
-    $result = db_query('SELECT * FROM {files} WHERE fid = %d', $fid);
-    $file = db_fetch_array($result);
-	    if ($file) {
-	  return $file;
+/**
+ * Submit handler to set a new field's formatter to "linkimage_urllink".
+ */
+function linkimagefield_form_content_field_overview_submit(&$form, &$form_state) {
+  if (isset($form_state['fields_added']['_add_new_field']) && isset($form['#type_name'])) {
+    $new_field = $form_state['fields_added']['_add_new_field'];
+    $node_type = $form['#type_name'];
+    $field = content_fields($new_field, $node_type);
+    if ($field['widget']['module'] == 'linkimagefield') {
+      foreach ($field['display_settings'] as $display_type => $display_settings) {
+        if ($field['display_settings'][$display_type]['format'] == 'default') {
+          $field['display_settings'][$display_type]['format'] = 'linkimage_urllink';
+        }
+      }
+      content_field_instance_update($field);
     }
-  }
-  // return an empty array if nothing was found.
-  return array();
-}
-
-function theme_linkimagefield_view_image($file, $alt = '',$url = '', $title = '', $attributes = NULL, $getsize = TRUE) {
-  return theme('linkimagefield_image', $file, $alt,$url, $title, $attributes , $getsize);
-}
-
-
-
-function theme_linkimagefield_edit_image_row($element) {
-  $output = '<div class="linkimagefield-edit-preview">'. drupal_render($element['preview']) .'</div>';
-  $output .= '<div class="linkimagefield-edit-image-detail">';
-  $output .= '<div class="linkimagefield-edit-image-flags">'. drupal_render($element['flags']) .'</div>';
-  $output .= '<div class="linkimagefield-edit-image-description">'. drupal_render($element['description']);
-  $output .= '</div>';
-  $output .= drupal_render($element['alt']);
-  $output .= drupal_render($element['title']);
-  $output .= drupal_render($element['url']);
-  $output .= '</div>';
-  //$output .= '<div class="linkimagefield-edit-image-fid">'. $element['fid']['#value'] .'</div>';
-  $output = '<div class="linkimagefield-edit-image-row clear-block">'. $output .'</div>';
-  if (isset($element['replace'])) {
-    $output .= '<div class="linkimagefield-edit-image-replace">'. drupal_render($element['replace']) .'</div>';
-  }
-  return $output;  
-}
-
-function theme_linkimagefield_image($file, $alt = '',$url_link = '', $title = '', $attributes = NULL, $getsize = TRUE) {
-  $file = (array)$file;
-  if (!$getsize || (is_file($file['filepath']) && (list($width, $height, $type, $image_attributes) = @getimagesize($file['filepath'])))) {
-    $attributes = drupal_attributes($attributes);
-    
-    $path = $file['fid'] == 'upload' ? $file['preview'] : $file['filepath'];
-    $alt = empty($alt) ? $file['alt'] : $alt;
-    //$url_link;    
-    $title = empty($title) ? $file['title'] : $title;
-    
-    $url = file_create_url($path); 
-    $url_link = url($url_link);
-    return '<a href="'.$url_link.'"><img src="'. check_url($url) .'" alt="'.
-        check_plain($alt) .'" title="'. check_plain($title) .'" '. $image_attributes . $attributes .' /></a>';
   }
 }
 
 /**
- * formats an array of images.
- * @param images
- *    array of individually themed images
- * @return 
- *    html string
+ * Implementation of CCK's hook_default_value().
  */
-function theme_linkimagefield_multiple($images) {
-  return implode("\n", $images);
+function linkimagefield_default_value(&$form, &$form_state, $field, $delta) {
+  return imagefield_default_value($form, $form_state, $field, $delta);
 }
 
-/** 
- * implementation of hook_filedownload
- * replicated from upload.module.
- *
- * conditionally included since we're just replicating the 
- * work of upload.module for now.
- */
-
-if (!function_exists('upload_file_download')) {
-  function linkimagefield_file_download($file) {
-    $file = file_create_path($file);
-    $result = db_query("SELECT f.* FROM {files} f WHERE filepath = '%s'", $file);
-    if ($file = db_fetch_object($result)) {
-      if (user_access('view uploaded files')) {
-        $node = node_load($file->nid);
-        if (node_access('view', $node)) {
-          $name = mime_header_encode($file->filename);
-          $type = mime_header_encode($file->filemime);
-          // Serve images and text inline for the browser to display rather than download.
-          $disposition = ereg('^(text/|image/)', $file->filemime) ? 'inline' : 'attachment';
-          return array(
-            'Content-Type: '. $type .'; name='. $name,
-            'Content-Length: '. $file->filesize,
-            'Content-Disposition: '. $disposition .'; filename='. $name,
-            'Cache-Control: private'
-          );
-        }
-        else {
-          return -1;
-        }
-      }
-      else {
-        return -1;
-      }
-    }
+function theme_linkimagefield_formatter($element) {
+  if (isset($element['#item']['nid']) && $node = node_load($element['#item']['nid'])) {
+    return linkimagefield_field_formatter($element['#field_name'], $element['#item'], $element['#formatter'], $node);
   }
+}
+
+function theme_linkimagefield_image($file, $alt = '', $title = '', $attributes = NULL, $getsize = TRUE, $url = '') {
+  return '<a href="'. $url .'">'. theme('imagefield_image', $file, $alt, $title, $attributes, $getsize) .'</a>';
+}
+
+function theme_linkimagefield_imagecache($element) {
+  $field = content_fields($element['#field_name']);
+  $item = $element['#item'];
+  $formatter = $element['#formatter'];
+  
+  if (empty($item['fid']) && $field['use_default_image']) {
+    $item = $field['default_image'];
+  }
+  // Views does not load the file for us, while CCK display fields does.
+  if (empty($item['filepath'])) {
+    $item = array_merge($item, field_file_load($item['fid']));
+  }
+  if (is_string($item['data'])) {
+    $item['data'] = unserialize($item['data']);
+  }
+  $alt = empty($item['data']['alt']) ? '' : $item['data']['alt'];
+  $title = empty($item['data']['title']) ? '' : $item['data']['title'];
+  $url = empty($item['data']['url']) ? '' : $item['data']['url'];
+  $parts =  explode('_', $formatter);
+  $style = array_pop($parts);
+  $presetname = implode('_', $parts);
+
+  $class = "linkimagefield imagecache imagecache-$presetname imagecache-$style imagecache-$formatter";
+  if ($preset = imagecache_preset_by_name($presetname)) {
+    $item['filepath'] = $item['fid'] == 'upload' ? $item['preview'] : $item['filepath'];
+    $imagetag = theme('imagecache', $presetname, $item['filepath'], $alt, $title);
+    return l($imagetag, $url, array('attributes' => array('class' => $class), 'html' => TRUE));
+  }
+  return '<!-- linkimagefield formatter imagecache preset('. $presetname .') not found! -->';
+
+	/*if (isset($element['#item']['nid']) && $node = node_load($element['#item']['nid'])) {
+    $imagecache_html = module_invoke('imagecache', 'field_formatter', $element['#field_name'], $element['#item'], $element['#formatter'], $node);
+    //return '<a href="'. $element['#item']['data']['url'] .'">'. $imagecache_html .'</a>';
+    return l($imagecache_html, $element['#item']['data']['url'], array('attributes' => array('class' => $class), 'html' => TRUE));
+  }*/
+}
+
+function theme_linkimagefield_item($item) {
+  return theme('linkimagefield_image', $item, $item['alt'], $item['title']);
+}
+
+function theme_linkimagefield_widget_item($element) {
+  return theme('imagefield_widget_item', $element);
+}
+
+function theme_linkimagefield_widget_preview($item = NULL) {
+  return '<div class="imagefield-preview">'. theme('imagefield_admin_thumbnail', $item) .'</div>';
+}
+
+function theme_linkimagefield_admin_thumbnail($item = NULL) {
+  return theme_imagefield_admin_thumbnail($item);
 }

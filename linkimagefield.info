@@ -1,11 +1,10 @@
 ; $Id$
 name = LinkImage
 description = Defines an link image field type.
-dependencies = content
+dependencies[] = content
+dependencies[] = filefield
+dependencies[] = imagefield
 package = CCK
+core = 6.x
 
-; Information added by drupal.org packaging script on 2008-04-11
-version = "5.x-1.2-rc1"
-project = "linkimagefield"
-datestamp = "1197871807"
 
