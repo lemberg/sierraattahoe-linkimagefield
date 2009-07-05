@@ -24,6 +24,17 @@ function linkimagefield_widget_settings_form($widget) {
     '#default_value' => !empty($widget['url']) ? $widget['url'] : '',
   );
   
+  $target_options = _linkimagefield_widget_url_target_options();
+  
+  $form['target'] = array(
+    '#type'          => 'select',
+    '#maxlength'     => '255',
+    '#title'         => t('Default Target'),
+    '#description'   => t('Select a default target type.'),
+    '#default_value' => !empty($widget['target']) ? $widget['target'] : '_self',
+  	'#options'			 => $target_options,
+  );
+  
   return $form;
 }
 
@@ -35,7 +46,7 @@ function linkimagefield_widget_settings_form($widget) {
  */
 function linkimagefield_widget_settings_save($widget) {
   $imagefield_settings = module_invoke('imagefield', 'widget_settings', 'save', $widget);
-  return array_merge($imagefield_settings, array('default_url'));
+  return array_merge($imagefield_settings, array('url', 'target'));
 }
 
 /**
@@ -50,10 +61,18 @@ function linkimagefield_widget_settings_validate($widget) {
   if (!empty($widget['url'])) {
     if (!valid_url($widget['url'])) {
       form_set_error('url', t('Please provide a valid url.'));
-      return;
+    } else {
+      $widget['url'] = check_url($widget['url']);
     }
+  }
+  
+  // Check the target
+  if (!empty($widget['target'])) {
+    $options = array('_self', '_blank', '_parent', '_top');
     
-    $widget['url'] = check_url($widget['url']);
+    if(!in_array($widget['target'], $options)) {
+      $widget['target'] = '_self';
+    }
   }
 }
 
@@ -68,9 +87,11 @@ function linkimagefield_widget_value($element, $edit = FALSE) {
   $item = imagefield_widget_value($element, $edit);
   if ($edit) {
     $item['url'] = isset($edit['url']) ? $edit['url'] : '';
+    $item['target'] = isset($edit['target']) ? $edit['target'] : '_self';
   }
   else {
     $item['url'] = '';
+    $item['target'] = '_self';
   }
   return $item;
 }
@@ -88,18 +109,24 @@ function linkimagefield_widget_process($element, $edit, &$form_state, $form) {
   $file = $element['#value'];
   $element = imagefield_widget_process($element, $edit, &$form_state, $form);
 
-  $default_url = (empty($file['status']) && empty($file['data']['url']));
   $field = content_fields($element['#field_name'], $element['#type_name']);
   $element['#theme'] = 'linkimagefield_widget_item';
   
   $element['data']['url'] = array(
     '#title' => t('URL'),
     '#type' => 'textfield',
-    '#default_value' => $default_alt ? $field['widget']['url'] : $file['data']['url'],
+    '#default_value' => $file['data']['url'] ? $file['data']['url'] : $field['widget']['url'],
     '#description' => t('This URL will be loaded when the image is clicked'),
     '#maxlength' => 255,
   );
   
+  $element['data']['target'] = array(
+    '#title'         => t('Target'),
+    '#type'          => 'select',
+    '#default_value' => $file['data']['target'] ? $file['data']['target'] : $field['widget']['target'],
+    '#description'   => t('Window/Frame Target for the URL'),
+    '#options' 		   => _linkimagefield_widget_url_target_options(),
+  );
   return $element;
 }
 
@@ -112,4 +139,18 @@ function linkimagefield_widget_process($element, $edit, &$form_state, $form) {
 function theme_linkimagefield_widget(&$element) {
   drupal_add_css(drupal_get_path('module', 'imagefield') .'/imagefield.css');
   return theme('form_element', $element, $element['#children']);
+}
+
+/**
+ * the list of URL frame targets
+ *
+ * @return array
+ */
+function _linkimagefield_widget_url_target_options(){
+  return array(
+    '_self'				  => t('Same Window (_self)'),
+    '_blank'				=> t('New Window (_blank)'),
+    '_parent'				=> t('Parent Frame (_parent)'),
+    '_top'				  => t('Top Frame (_top)'),
+  );
 }

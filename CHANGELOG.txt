@@ -1,0 +1,11 @@
+// $Id$
+
+6--1.0-alpha2
+========
+Features
+-------
+- #509518 by johnfyoung: Added target support for the URL
+
+Bugfix
+------
+- #509806 by johnfyoung: Fixed install bug wherein the installer wasn't checking for the existence of imagecache

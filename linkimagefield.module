@@ -70,7 +70,7 @@ function linkimagefield_elements() {
 function linkimagefield_theme() {
   $theme =  array(
     'linkimagefield_image' => array(
-      'arguments' => array('file' => NULL, 'alt' => '', 'title' => '', 'attributes' => NULL, 'getsize' => TRUE, 'url' => ''),
+      'arguments' => array('file' => NULL, 'alt' => '', 'title' => '', 'attributes' => NULL, 'getsize' => TRUE, 'url' => '', 'target' => '_self'),
     ),
     // Theme a Link Image Field field item. It calls linkimagefied_image with the proper
     // item properties as arguments.
@@ -102,12 +102,14 @@ function linkimagefield_theme() {
     ),
   );
   
-  $imagecache_presets = module_invoke('imagecache', 'presets');
-  foreach ($imagecache_presets as $preset) {
-    $theme['linkimagefield_formatter_'. $preset['presetname'] .'_linkimage'] = array(
-      'arguments' => array('element' => NULL),
-      'function' => 'theme_linkimagefield_imagecache',
-    );
+  if(module_exists('imagecache')) {
+    $imagecache_presets = module_invoke('imagecache', 'presets');
+    foreach ($imagecache_presets as $preset) {
+      $theme['linkimagefield_formatter_'. $preset['presetname'] .'_linkimage'] = array(
+        'arguments' => array('element' => NULL),
+        'function' => 'theme_linkimagefield_imagecache',
+      );
+    }
   }
   
   return $theme;
@@ -186,20 +188,23 @@ function linkimagefield_widget(&$form, &$form_state, $field, $items, $delta = 0)
  * @return array
  */
 function linkimagefield_field_formatter_info() {
-  $imagecache_presets = module_invoke('imagecache', 'presets');
-  
   $formatters['linkimage'] = array(
       'label' => t('Link Image'),
       'field types' => array('image','filefield'),
       'description' => t('Displays image files as link to provided URL.'),
   );
   
-  foreach ($imagecache_presets as $preset) {
-    $formatters[$preset['presetname'] .'_linkimage'] = array(
-      'label' => t('@preset Link Image', array('@preset' => $preset['presetname'])),
-      'field types' => array('image', 'filefield'),
-    );
+  if(module_exists('imagecache')) {
+    $imagecache_presets = module_invoke('imagecache', 'presets');
+    
+    foreach ($imagecache_presets as $preset) {
+      $formatters[$preset['presetname'] .'_linkimage'] = array(
+        'label' => t('@preset Link Image', array('@preset' => $preset['presetname'])),
+        'field types' => array('image', 'filefield'),
+      );
+    }
   }
+
   return $formatters;
 }
 
@@ -272,8 +277,8 @@ function theme_linkimagefield_formatter($element) {
   }
 }
 
-function theme_linkimagefield_image($file, $alt = '', $title = '', $attributes = NULL, $getsize = TRUE, $url = '') {
-  return '<a href="'. $url .'">'. theme('imagefield_image', $file, $alt, $title, $attributes, $getsize) .'</a>';
+function theme_linkimagefield_image($file, $alt = '', $title = '', $attributes = NULL, $getsize = TRUE, $url = '', $target = '_self') {
+  return '<a href="'. $url .'" target="'. $target .'" title="'. $title .'">'. theme('imagefield_image', $file, $alt, $title, $attributes, $getsize) .'</a>';
 }
 
 function theme_linkimagefield_imagecache($element) {
@@ -294,6 +299,7 @@ function theme_linkimagefield_imagecache($element) {
   $alt = empty($item['data']['alt']) ? '' : $item['data']['alt'];
   $title = empty($item['data']['title']) ? '' : $item['data']['title'];
   $url = empty($item['data']['url']) ? '' : $item['data']['url'];
+  $url = empty($item['data']['target']) ? '_self' : $item['data']['target'];
   $parts =  explode('_', $formatter);
   $style = array_pop($parts);
   $presetname = implode('_', $parts);
@@ -302,7 +308,7 @@ function theme_linkimagefield_imagecache($element) {
   if ($preset = imagecache_preset_by_name($presetname)) {
     $item['filepath'] = $item['fid'] == 'upload' ? $item['preview'] : $item['filepath'];
     $imagetag = theme('imagecache', $presetname, $item['filepath'], $alt, $title);
-    return l($imagetag, $url, array('attributes' => array('class' => $class), 'html' => TRUE));
+    return l($imagetag, $url, array('attributes' => array('class' => $class, 'title' => $title), 'html' => TRUE));
   }
   return '<!-- linkimagefield formatter imagecache preset('. $presetname .') not found! -->';
 
@@ -314,7 +320,7 @@ function theme_linkimagefield_imagecache($element) {
 }
 
 function theme_linkimagefield_item($item) {
-  return theme('linkimagefield_image', $item, $item['alt'], $item['title']);
+  return theme('linkimagefield_image', $item, $item['alt'], $item['title'], TRUE, $item[$url], $item[$target]);
 }
 
 function theme_linkimagefield_widget_item($element) {
