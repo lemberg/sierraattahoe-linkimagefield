@@ -1,5 +1,11 @@
 // $Id$
 
+6--1.0-alpha3
+========
+Bugfix
+------
+- #512000 by johnfyoung: Fixed imagecache formatter to print the URL correctly
+
 6--1.0-alpha2
 ========
 Features
