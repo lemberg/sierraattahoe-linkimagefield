@@ -15,11 +15,28 @@ function theme_linkimagefield_formatter_linkimage($element) {
   $field = content_fields($element['#field_name']);
   $item = $element['#item'];
 
-  $item['data']['alt'] = isset($item['data']['alt']) ? $item['data']['alt'] : '';
-  $item['data']['title'] = isset($item['data']['title']) ? $item['data']['title'] : '';
-  $item['data']['url'] = isset($item['data']['url']) ? $item['data']['url'] : '';
-  $item['data']['target'] = isset($item['data']['target']) ? $item['data']['target'] : '_self';
+  $item['data']['alt'] = _linkimagefield_format_set_attribute('alt', $item, $field);
+  $item['data']['title'] = _linkimagefield_format_set_attribute('title', $item, $field);
+  $item['data']['url'] = _linkimagefield_format_set_attribute('url', $item, $field);
+  $item['data']['target'] = _linkimagefield_format_set_attribute('target', $item, $field);
 
   $class = 'linkimagefield linkimagefield-'. $field['field_name'];
   return theme('linkimagefield_image', $item, $item['data']['alt'], $item['data']['title'], array('class' => $class), TRUE, $item['data']['url'], $item['data']['target']);
+}
+
+function theme_linkimagefield_formatter_linkimage_justlink($element) {
+  $item = $element['#item'];
+  $field = content_fields($element['#field_name']);
+  
+  // Inside a view $element may contain null data. In that case, just return.
+  if (empty($item['data']['url']) && empty($field['widget']['url'])) {
+    return '';
+  }
+
+  $item['data']['title'] = _linkimagefield_format_set_attribute('title', $item, $field);
+  $item['data']['url'] = _linkimagefield_format_set_attribute('url', $item, $field);
+  $item['data']['target'] = _linkimagefield_format_set_attribute('target', $item, $field);
+
+  $class = 'linkimagefield linkimagefield-justlink linkimagefield-'. $field['field_name'];
+  return theme('linkimagefield_justlink', $item['data']['url'], $item['data']['target'], $item['data']['title'], $class);
 }

@@ -16,7 +16,15 @@
 function linkimagefield_widget_settings_form($widget) {
   $form = module_invoke('imagefield', 'widget_settings', 'form', $widget);
   
-  $form['url'] = array(
+  $form['url_settings'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('URL Link settings'),
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE,
+    '#weight' => 0,
+  );
+  
+  $form['url_settings']['url'] = array(
     '#type'          => 'textfield',
     '#maxlength'     => '255',
     '#title'         => t('Default URL'),
@@ -25,8 +33,15 @@ function linkimagefield_widget_settings_form($widget) {
   );
   
   $target_options = _linkimagefield_widget_url_target_options();
+
+  $form['url_settings']['custom_target'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable custom target'),
+    '#default_value' =>  !empty($widget['custom_target']) ? $widget['custom_target'] : 0,
+    '#description' => t('Enable user to provide alternate target frame for link.'),
+  );
   
-  $form['target'] = array(
+  $form['url_settings']['target'] = array(
     '#type'          => 'select',
     '#maxlength'     => '255',
     '#title'         => t('Default Target'),
@@ -46,7 +61,7 @@ function linkimagefield_widget_settings_form($widget) {
  */
 function linkimagefield_widget_settings_save($widget) {
   $imagefield_settings = module_invoke('imagefield', 'widget_settings', 'save', $widget);
-  return array_merge($imagefield_settings, array('url', 'target'));
+  return array_merge($imagefield_settings, array('url', 'custom_target', 'target'));
 }
 
 /**
@@ -86,8 +101,8 @@ function linkimagefield_widget_settings_validate($widget) {
 function linkimagefield_widget_value($element, $edit = FALSE) {
   $item = imagefield_widget_value($element, $edit);
   if ($edit) {
-    $item['url'] = isset($edit['url']) ? $edit['url'] : '';
-    $item['target'] = isset($edit['target']) ? $edit['target'] : '_self';
+    $item['url'] = isset($edit['data']['url']) ? $edit['data']['url'] : '';
+    $item['target'] = isset($edit['data']['target']) ? $edit['data']['target'] : '_self';
   }
   else {
     $item['url'] = '';
@@ -109,6 +124,9 @@ function linkimagefield_widget_process($element, $edit, &$form_state, $form) {
   $file = $element['#value'];
   $element = imagefield_widget_process($element, $edit, &$form_state, $form);
 
+  // add some help text, telling user the URL field will be viewable after the file is supplied 
+  $element['upload']['#description'] = t('Once an Image is uploaded, you will ba able to supply a URL for the link.') . '<br />' . $element['upload']['#description'];
+   
   $field = content_fields($element['#field_name'], $element['#type_name']);
   $element['#theme'] = 'linkimagefield_widget_item';
   
@@ -120,13 +138,18 @@ function linkimagefield_widget_process($element, $edit, &$form_state, $form) {
     '#maxlength' => 255,
   );
   
+  $default_target = !$field['widget']['custom_target'];
+  
   $element['data']['target'] = array(
     '#title'         => t('Target'),
-    '#type'          => 'select',
-    '#default_value' => $file['data']['target'] ? $file['data']['target'] : $field['widget']['target'],
+    '#type'          => $field['widget']['custom_target'] ? 'select' : 'value',
+    '#default_value' => $default_target ? $field['widget']['target'] : $file['data']['target'],
     '#description'   => t('Window/Frame Target for the URL'),
-    '#options' 		   => _linkimagefield_widget_url_target_options(),
   );
+  
+  if($field['widget']['custom_target']) {
+    $element['data']['target']['#options'] = array_merge(array('default' => t('Use Default').' ('.$field['widget']['target'].')'),_linkimagefield_widget_url_target_options());
+  }
   return $element;
 }
 

@@ -59,7 +59,7 @@ function linkimagefield_elements() {
   $imagefield_elements = imagefield_elements();
   $elements['linkimagefield_widget'] = $imagefield_elements['imagefield_widget'];
   $elements['linkimagefield_widget']['#process'][] = 'linkimagefield_widget_process';
-  //$elements['linkimagefield_widget']['#element_validate'][] = 'linkimagefield_widget_validate';
+  $elements['linkimagefield_widget']['#element_validate'][] = 'linkimagefield_widget_validate';
 
   // ImageField needs a separate value callback to save its alt, title and URL texts.
   $elements['linkimagefield_widget']['#value_callback'] = 'linkimagefield_widget_value';
@@ -71,6 +71,9 @@ function linkimagefield_theme() {
   $theme =  array(
     'linkimagefield_image' => array(
       'arguments' => array('file' => NULL, 'alt' => '', 'title' => '', 'attributes' => NULL, 'getsize' => TRUE, 'url' => '', 'target' => '_self'),
+    ),
+    'linkimagefield_justlink' => array(
+      'arguments' => array('url' => '', 'target' => '_self', 'title' => '', 'class' => ''),
     ),
     // Theme a Link Image Field field item. It calls linkimagefied_image with the proper
     // item properties as arguments.
@@ -100,6 +103,10 @@ function linkimagefield_theme() {
       'arguments' => array('element' => NULL),
       'file' => 'linkimagefield_formatter.inc',
     ),
+    'linkimagefield_formatter_linkimage_justlink' => array(
+      'arguments' => array('element' => NULL),
+      'file' => 'linkimagefield_formatter.inc',
+    ),
   );
   
   if(module_exists('imagecache')) {
@@ -114,6 +121,18 @@ function linkimagefield_theme() {
   
   return $theme;
 }
+
+/**
+ * Implementation of hook_views_api().
+ */
+// TODO: get views data to work
+/*
+function linkimagefield_views_api() {
+  return array(
+    'api' => 2.0,
+    'path' => drupal_get_path('module', 'linkimagefield') . '/views',
+  );
+}*/
 
 /**
  * Implementation of hook_file_download.
@@ -190,8 +209,14 @@ function linkimagefield_widget(&$form, &$form_state, $field, $items, $delta = 0)
 function linkimagefield_field_formatter_info() {
   $formatters['linkimage'] = array(
       'label' => t('Link Image'),
-      'field types' => array('image','filefield'),
+      'field types' => array('filefield'),
       'description' => t('Displays image files as link to provided URL.'),
+  );
+  
+  $formatters['linkimage_justlink'] = array(
+      'label' => t('Link Image - Just Link'),
+      'field types' => array('filefield'),
+      'description' => t('Displays just the link supplied for a Link Image Field.'),
   );
   
   if(module_exists('imagecache')) {
@@ -207,34 +232,6 @@ function linkimagefield_field_formatter_info() {
 
   return $formatters;
 }
-
-/*
-function linkimagefield_field_formatter($field, $item, $formatter, $node) {
-  if (empty($item['fid']) && $field['use_default_image']) {
-    $item = $field['default_image'];
-  }
-  // Views does not load the file for us, while CCK display fields does.
-  if (empty($item['filepath'])) {
-    $item = array_merge($item, field_file_load($item['fid']));
-  }
-  if (is_string($item['data'])) {
-    $item['data'] = unserialize($item['data']);
-  }
-  $alt = empty($item['data']['alt']) ? '' : $item['data']['alt'];
-  $title = empty($item['data']['title']) ? '' : $item['data']['title'];
-  $url = empty($item['data']['url']) ? '' : $item['data']['url'];
-  $parts =  explode('_', $formatter);
-  $style = array_pop($parts);
-  $presetname = implode('_', $parts);
-
-  $class = "linkimagefield imagecache imagecache-$presetname imagecache-$style imagecache-$formatter";
-  if ($preset = imagecache_preset_by_name($presetname)) {
-    $item['filepath'] = $item['fid'] == 'upload' ? $item['preview'] : $item['filepath'];
-    $imagetag = theme('imagecache', $presetname, $item['filepath'], $alt, $title);
-    return l($imagetag, $url, array('attributes' => array('class' => $class), 'html' => TRUE));
-  }
-  return '<!-- linkimagefield formatter imagecache preset('. $presetname .') not found! -->';
-}*/
 
 /**
  * Implementation of hook_form_[form_id]_alter().
@@ -271,6 +268,34 @@ function linkimagefield_default_value(&$form, &$form_state, $field, $delta) {
   return imagefield_default_value($form, $form_state, $field, $delta);
 }
 
+/**
+ * determine whether an attribute for the link should be the default or the custom
+ * 
+ * works for a url, alt or title attribute
+ *
+ * @param string $attr
+ * @param array $item
+ * @param array $field
+ * @return string
+ */
+function _linkimagefield_format_set_attribute($attr, $item, $field) {
+  $attr_value = '';
+  
+  // if custom values are allowed, use the user supplied value or default if one's not supplied
+  // else since no custom values are allowed, just use the default if supplied
+  // (URL is a special case - doesn't have a check for use custom value) 
+  if(($field['widget']['custom_'.$attr]) || $attr == 'url' || $attr == 'target') {
+    if($attr == 'target' && $item['data'][$attr] == 'default') {
+      $item['data'][$attr] = $field['widget'][$attr];
+    }
+    $attr_value = !empty($item['data'][$attr]) ? $item['data'][$attr] : (!empty($field['widget'][$attr]) ? $field['widget'][$attr] : '');      
+  } else {
+    $attr_value = !empty($field['widget'][$attr]) ? $field['widget'][$attr] : ($attr == 'target' ? '_self' : '');
+  }
+  
+  return $attr_value;
+}
+
 function theme_linkimagefield_formatter($element) {
   if (isset($element['#item']['nid']) && $node = node_load($element['#item']['nid'])) {
     return linkimagefield_field_formatter($element['#field_name'], $element['#item'], $element['#formatter'], $node);
@@ -278,7 +303,20 @@ function theme_linkimagefield_formatter($element) {
 }
 
 function theme_linkimagefield_image($file, $alt = '', $title = '', $attributes = NULL, $getsize = TRUE, $url = '', $target = '_self') {
-  return '<a href="'. $url .'" target="'. $target .'" title="'. $title .'">'. theme('imagefield_image', $file, $alt, $title, $attributes, $getsize) .'</a>';
+  $url_attributes = array('title' => $title);
+  if($target != '_self') {
+    $url_attributes['target'] = $target;
+  }
+  $imagetag = theme('imagefield_image', $file, $alt, $title, $attributes, $getsize);
+  return l($imagetag, $url, array('attributes' => $url_attributes, 'html' => TRUE));
+}
+
+function theme_linkimagefield_justlink($url = '', $target = '_self', $title = '', $class = '') {
+  $url_attributes = array('class' => $class, 'title' => $title);
+  if($target != '_self') {
+    $url_attributes['target'] = $target;
+  }
+  return l($url, $url, array('attributes' => $url_attributes, 'html' => TRUE));
 }
 
 function theme_linkimagefield_imagecache($element) {
@@ -288,6 +326,8 @@ function theme_linkimagefield_imagecache($element) {
   
   if (empty($item['fid']) && $field['use_default_image']) {
     $item = $field['default_image'];
+  } else if (empty($item['fid'])) {  // mod by eric
+    return '';
   }
   // Views does not load the file for us, while CCK display fields does.
   if (empty($item['filepath'])) {
@@ -296,10 +336,11 @@ function theme_linkimagefield_imagecache($element) {
   if (is_string($item['data'])) {
     $item['data'] = unserialize($item['data']);
   }
-  $alt = empty($item['data']['alt']) ? '' : $item['data']['alt'];
-  $title = empty($item['data']['title']) ? '' : $item['data']['title'];
-  $url = empty($item['data']['url']) ? '' : $item['data']['url'];
-  $target = empty($item['data']['target']) ? '_self' : $item['data']['target'];
+  
+  $alt = _linkimagefield_format_set_attribute('alt', $item, $field);
+  $title = _linkimagefield_format_set_attribute('title', $item, $field);
+  $url = _linkimagefield_format_set_attribute('url', $item, $field);
+  $target = _linkimagefield_format_set_attribute('target', $item, $field);
   $parts =  explode('_', $formatter);
   $style = array_pop($parts);
   $presetname = implode('_', $parts);
@@ -308,7 +349,11 @@ function theme_linkimagefield_imagecache($element) {
   if ($preset = imagecache_preset_by_name($presetname)) {
     $item['filepath'] = $item['fid'] == 'upload' ? $item['preview'] : $item['filepath'];
     $imagetag = theme('imagecache', $presetname, $item['filepath'], $alt, $title);
-    return l($imagetag, $url, array('attributes' => array('class' => $class, 'title' => $title, 'target' => $target), 'html' => TRUE));
+    $attributes = array('class' => $class, 'title' => $title);
+    if($target != '_self') {
+      $attributes['target'] = $target;
+    }
+    return l($imagetag, $url, array('attributes' => $attributes, 'html' => TRUE));
   }
   return '<!-- linkimagefield formatter imagecache preset('. $presetname .') not found! -->';
 }
