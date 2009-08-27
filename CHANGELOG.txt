@@ -1,4 +1,10 @@
 // $Id$
+6--1.0-beta1
+========
+Features
+-------
+- #561402 by johnfyoung: remove the link if the url field is empty
+- #538220 by johnfyoung: added nofollow functionality to the link
 
 6--1.0-alpha4
 ========

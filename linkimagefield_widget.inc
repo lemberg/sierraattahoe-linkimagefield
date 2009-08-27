@@ -50,6 +50,13 @@ function linkimagefield_widget_settings_form($widget) {
   	'#options'			 => $target_options,
   );
   
+  $form['url_settings']['nofollow'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable nofollow'),
+    '#default_value' =>  !empty($widget['nofollow']) ? $widget['nofollow'] : 0,
+    '#description' => t('Allow links to have "nofollow" rel tags'),
+  );
+  
   return $form;
 }
 
@@ -61,7 +68,7 @@ function linkimagefield_widget_settings_form($widget) {
  */
 function linkimagefield_widget_settings_save($widget) {
   $imagefield_settings = module_invoke('imagefield', 'widget_settings', 'save', $widget);
-  return array_merge($imagefield_settings, array('url', 'custom_target', 'target'));
+  return array_merge($imagefield_settings, array('url', 'custom_target', 'target', 'nofollow'));
 }
 
 /**
@@ -103,10 +110,12 @@ function linkimagefield_widget_value($element, $edit = FALSE) {
   if ($edit) {
     $item['url'] = isset($edit['data']['url']) ? $edit['data']['url'] : '';
     $item['target'] = isset($edit['data']['target']) ? $edit['data']['target'] : '_self';
+    $item['nofollow'] = isset($edit['data']['nofollow']) ? $edit['data']['nofollow'] : FALSE;
   }
   else {
     $item['url'] = '';
     $item['target'] = '_self';
+    $item['nofollow'] = TRUE;
   }
   return $item;
 }
@@ -149,6 +158,15 @@ function linkimagefield_widget_process($element, $edit, &$form_state, $form) {
   
   if($field['widget']['custom_target']) {
     $element['data']['target']['#options'] = array_merge(array('default' => t('Use Default').' ('.$field['widget']['target'].')'),_linkimagefield_widget_url_target_options());
+  }
+  
+  if($field['widget']['nofollow']) {
+    $element['data']['nofollow'] = array(
+      '#title'         => t('Mark as "nofollow"'),
+      '#type'          => 'checkbox',
+      '#default_value' => $file['data']['nofollow'],
+      '#description'   => t('Add a relation tag telling bots not to follow this link'),      
+    );
   }
   return $element;
 }

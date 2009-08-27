@@ -75,6 +75,7 @@ function linkimagefield_theme() {
     'linkimagefield_justlink' => array(
       'arguments' => array('url' => '', 'target' => '_self', 'title' => '', 'class' => ''),
     ),
+
     // Theme a Link Image Field field item. It calls linkimagefied_image with the proper
     // item properties as arguments.
     'linkimagefield_item' => array(
@@ -109,6 +110,13 @@ function linkimagefield_theme() {
     ),
   );
   
+  /**
+   * to override these themes the function call would look like:
+   * 
+   * mytheme_linkimagefield_formatter_imagecachepresetname_linkimage
+   * 
+   * where the imagecachepresetname is the name of the desired imagecache preset
+   */
   if(module_exists('imagecache')) {
     $imagecache_presets = module_invoke('imagecache', 'presets');
     foreach ($imagecache_presets as $preset) {
@@ -302,19 +310,28 @@ function theme_linkimagefield_formatter($element) {
   }
 }
 
-function theme_linkimagefield_image($file, $alt = '', $title = '', $attributes = NULL, $getsize = TRUE, $url = '', $target = '_self') {
+function theme_linkimagefield_image($file, $alt = '', $title = '', $attributes = NULL, $getsize = TRUE, $url = '', $target = '_self', $nofollow = FALSE) {
   $url_attributes = array('title' => $title);
   if($target != '_self') {
     $url_attributes['target'] = $target;
   }
+  if($nofollow) {
+    $url_attributes['rel'] = 'nofollow';
+  }
   $imagetag = theme('imagefield_image', $file, $alt, $title, $attributes, $getsize);
+  if(empty($url)) {
+    return $imagetag;
+  }
   return l($imagetag, $url, array('attributes' => $url_attributes, 'html' => TRUE));
 }
 
-function theme_linkimagefield_justlink($url = '', $target = '_self', $title = '', $class = '') {
+function theme_linkimagefield_justlink($url = '', $target = '_self', $title = '', $class = '', $nofollow = FALSE) {
   $url_attributes = array('class' => $class, 'title' => $title);
   if($target != '_self') {
     $url_attributes['target'] = $target;
+  }
+  if($nofollow) {
+    $url_attributes['rel'] = 'nofollow';
   }
   return l($url, $url, array('attributes' => $url_attributes, 'html' => TRUE));
 }
@@ -341,6 +358,7 @@ function theme_linkimagefield_imagecache($element) {
   $title = _linkimagefield_format_set_attribute('title', $item, $field);
   $url = _linkimagefield_format_set_attribute('url', $item, $field);
   $target = _linkimagefield_format_set_attribute('target', $item, $field);
+  $nofollow = $item['data']['nofollow'];
   $parts =  explode('_', $formatter);
   $style = array_pop($parts);
   $presetname = implode('_', $parts);
@@ -352,6 +370,12 @@ function theme_linkimagefield_imagecache($element) {
     $attributes = array('class' => $class, 'title' => $title);
     if($target != '_self') {
       $attributes['target'] = $target;
+    }
+    if($nofollow) {
+      $attributes['rel'] = 'nofollow';
+    }
+    if(empty($url)) {
+      return $imagetag;
     }
     return l($imagetag, $url, array('attributes' => $attributes, 'html' => TRUE));
   }
