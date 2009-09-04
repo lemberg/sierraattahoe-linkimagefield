@@ -1,4 +1,10 @@
 // $Id$
+6--1.0-beta2
+========
+Features
+-------
+- #561922 by johnfyoung: fixed call by reference
+
 6--1.0-beta1
 ========
 Features
