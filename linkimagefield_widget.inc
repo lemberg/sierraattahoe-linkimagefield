@@ -131,7 +131,7 @@ function linkimagefield_widget_value($element, $edit = FALSE) {
  */
 function linkimagefield_widget_process($element, $edit, &$form_state, $form) {
   $file = $element['#value'];
-  $element = imagefield_widget_process($element, $edit, &$form_state, $form);
+  $element = imagefield_widget_process($element, $edit, $form_state, $form);
 
   // add some help text, telling user the URL field will be viewable after the file is supplied 
   $element['upload']['#description'] = t('Once an Image is uploaded, you will ba able to supply a URL for the link.') . '<br />' . $element['upload']['#description'];
