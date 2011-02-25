@@ -1,4 +1,3 @@
-// $Id$
 
 LinkImageField provides an "LinkImage" widget type to CCK. This module extends the 
 ImageField widget, allowing a user to provide a URL link for it.
