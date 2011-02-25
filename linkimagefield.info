@@ -1,4 +1,3 @@
-; $Id$
 name = LinkImage
 description = Defines an link image field type.
 dependencies[] = content
