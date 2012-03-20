@@ -105,10 +105,13 @@ function linkimagefield_widget_process($element, $edit, &$form_state, $form) {
 /**
  * FormAPI theme function. Theme the output of an image field.
  *
- * @param arrayreference $element
+ * @param array $element
+ *   An associative array containing the properties of the element.
+ *
  * @return string
+ *   A string representing the form element.
  */
-function theme_linkimagefield_widget(&$element) {
+function theme_linkimagefield_widget($element) {
   drupal_add_css(drupal_get_path('module', 'imagefield') .'/imagefield.css');
   return theme('form_element', $element, $element['#children']);
 }
